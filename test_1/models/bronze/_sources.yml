@@ -1,0 +1,72 @@
+version: 2
+
+sources:
+  - name: sqlserver_raw
+    description: |
+      Raw source tables migrated from SQL Server dbo schema into Snowflake.
+      These tables are the system-of-record for the Address domain and serve as the
+      entry point for the bronze → silver → mart dbt pipeline.
+      Loaded via BCP/COPY INTO into MIGRATE_ADMIN.RAW schema.
+    database: "MIGRATE_ADMIN"
+    schema: "raw"
+    tables:
+      - name: customer_address
+        description: |
+          Migrated from SQL Server dbo.CustomerAddress.
+          Contains customer address records with territory and region references.
+          Primary key: Id. Schema drift columns ADDRESS_TYPE and IS_PRIMARY were added
+          during migration and are now tracked through all downstream layers.
+        columns:
+          - name: ID
+            description: "Primary key — unique identifier for each customer address record."
+          - name: CUSTOMER_ID
+            description: "Foreign key reference to the customer entity."
+          - name: LINE1
+            description: "Address line 1 (street number and name)."
+          - name: LINE2
+            description: "Address line 2 (suite, floor, unit)."
+          - name: LINE3
+            description: "City / locality."
+          - name: LINE6
+            description: "Postal / zip code."
+          - name: TERRITORY_ID
+            description: "Foreign key to Territory_lu. Drives the Country field in dim_address."
+          - name: TERRITORY_REGION_ID
+            description: "Foreign key to TerritoryRegion_lu. Drives the Region field in dim_address."
+          - name: ADDRESS_TYPE
+            description: "Schema drift column added post-migration. Values: Billing, Shipping, Both."
+          - name: IS_PRIMARY
+            description: "Schema drift column added post-migration. Indicates whether this is the primary address."
+
+      - name: territory_lu
+        description: |
+          Migrated from SQL Server dbo.Territory_lu.
+          Lookup table for territory/country definitions.
+          Note: rows with Description = 'Data Error' are treated as invalid and
+          replaced with 'N/A' in the silver layer via NULLIF logic.
+        columns:
+          - name: ID
+            description: "Primary key."
+          - name: DESCRIPTION
+            description: "Territory/country name. 'Data Error' values are excluded in downstream models."
+          - name: COUNTRY_CODE
+            description: "ISO 3-character country code."
+          - name: IS_TERRITORY
+            description: "Boolean flag indicating whether this entry represents a true territory."
+          - name: STATUS_ID
+            description: "Active/inactive status of the territory."
+
+      - name: territory_region_lu
+        description: |
+          Migrated from SQL Server dbo.TerritoryRegion_lu.
+          Sub-region lookup table nested within territories.
+          Has a FK relationship to Territory_lu on TERRITORY_ID.
+        columns:
+          - name: ID
+            description: "Primary key."
+          - name: DESCRIPTION
+            description: "Region description (e.g. England, California, Bavaria)."
+          - name: CODE
+            description: "3-character region code."
+          - name: TERRITORY_ID
+            description: "Foreign key to Territory_lu."

@@ -1,0 +1,79 @@
+version: 2
+
+models:
+  - name: dim_address
+    description: |
+      **Mart Layer** — Address dimension table.
+      Converted from the SQL Server stored procedure `dbo.usp_PopulateDimAddress`.
+
+      This model implements a **Type 1 SCD with soft-delete** pattern using dbt incremental
+      merge strategy against Snowflake.
+
+      Behaviour on each run:
+      - **New records** (address_key not in target) → INSERT
+      - **Changed records** (hash_key differs) → UPDATE all tracked columns
+      - **Deleted records** (present in mart but absent from silver) → soft-delete via `deleted_on` timestamp
+      - **Unchanged records** → no-op (not processed)
+
+      Performance optimisations applied:
+      - Single `silver` CTE prevents double-scan of int_address__enriched
+      - `NOT EXISTS` replaces `NOT IN` subquery for NULL-safe, index-friendly soft-delete detection
+      - `merge_update_columns` restricted to only changed columns to minimise write amplification
+
+      Schema drift handling:
+      - `+on_schema_change: sync_all_columns` in dbt_project.yml propagates new columns
+      - `sync_incremental_columns` macro available for pre-run ALTER TABLE on existing mart table
+
+    columns:
+      - name: address_key
+        description: "Surrogate key — SHA1-based hash of source address ID. Unique, non-null."
+        tests:
+          - unique
+          - not_null
+      - name: source_address_id
+        description: "Original CustomerAddress.Id from SQL Server. NULL for the unknown member row."
+      - name: customer_address1
+        description: "Address line 1. 'N/A' if source was NULL."
+        tests:
+          - not_null
+      - name: customer_address2
+        description: "Address line 2. 'N/A' if source was NULL."
+        tests:
+          - not_null
+      - name: country
+        description: "Country name. 'N/A' for Data Error or unmatched territories."
+        tests:
+          - not_null
+      - name: region
+        description: "Region name. 'N/A' if no territory region was linked."
+        tests:
+          - not_null
+      - name: city
+        description: "City. 'N/A' if source LINE3 was NULL."
+        tests:
+          - not_null
+      - name: post_code
+        description: "Postal code. 'N/A' if source LINE6 was NULL."
+        tests:
+          - not_null
+      - name: hash_key
+        description: |
+          SHA2_512 hash of all dimension attributes.
+          Change in this value triggers an UPDATE during the incremental MERGE.
+        tests:
+          - not_null
+      - name: address_type
+        description: "Address type (Billing/Shipping/Both). Schema drift column — NULL for pre-drift rows."
+        tests:
+          - accepted_values:
+              values: ['Billing', 'Shipping', 'Both']
+              config:
+                where: "address_type IS NOT NULL"
+      - name: is_primary
+        description: "Primary address flag. Schema drift column — NULL for pre-drift rows."
+      - name: deleted_on
+        description: |
+          Soft-delete timestamp. NULL = record is active.
+          Set to CURRENT_TIMESTAMP() when the record is no longer present in the silver layer
+          (i.e. was deleted from the source system).
+          Records are never physically deleted from this table.

@@ -1,0 +1,168 @@
+version: 2
+
+models:
+  - name: raw_customer_address
+    description: |
+      **Bronze Layer** — 1:1 copy of the raw CustomerAddress source table with explicit
+      Snowflake type casting applied. No business logic is applied here.
+      Materialized as a `table` on every run to ensure fresh data from the raw layer.
+
+      Conversion notes:
+      - INT columns cast to NUMBER(10,0)
+      - BIT columns cast to BOOLEAN
+      - DATETIME columns cast to TIMESTAMP_NTZ
+      - Schema drift columns ADDRESS_TYPE and IS_PRIMARY added and tracked here.
+    columns:
+      - name: id
+        description: "Primary key — unique address record identifier."
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: "Reference to the customer who owns this address."
+        tests:
+          - not_null
+      - name: territory_id
+        description: "Links to raw_territory_lu. Used for country derivation in silver."
+        tests:
+          - not_null
+      - name: territory_region_id
+        description: "Links to raw_territory_region_lu. Used for region derivation in silver. Nullable."
+      - name: line1
+        description: "Street address line 1."
+      - name: line2
+        description: "Street address line 2 (suite, unit)."
+      - name: line3
+        description: "City / locality."
+      - name: line6
+        description: "Postal / zip code."
+      - name: category_bit_sum
+        description: "Bitmask representing address category flags."
+        tests:
+          - not_null
+      - name: valid
+        description: "Boolean flag indicating whether the address has been validated."
+      - name: payer_number
+        description: "Optional payer reference number associated with this address."
+      - name: is_new_bapi_mapping_used
+        description: "Boolean flag indicating whether the new BAPI mapping is active for this address."
+        tests:
+          - not_null
+      - name: status_id
+        description: "Active/inactive status of the address record."
+        tests:
+          - not_null
+      - name: created_date
+        description: "Timestamp when the address was created in the source system."
+        tests:
+          - not_null
+      - name: created_by
+        description: "User ID who created the address record."
+        tests:
+          - not_null
+      - name: updated_date
+        description: "Timestamp of the last update. NULL if never updated."
+      - name: updated_by
+        description: "User ID who last updated the record. NULL if never updated."
+      - name: sap_customer_number
+        description: "SAP ERP customer number linked to this address."
+      - name: address_type
+        description: "Address type — schema drift column. Values: Billing, Shipping, Both."
+        tests:
+          - accepted_values:
+              values: ['Billing', 'Shipping', 'Both']
+      - name: is_primary
+        description: "Primary address flag — schema drift column. TRUE if this is the primary address."
+
+  - name: raw_territory_lu
+    description: |
+      **Bronze Layer** — 1:1 copy of Territory_lu lookup table.
+      Used in silver to resolve territory IDs to country names.
+      Note: 'Data Error' descriptions exist in source and are handled downstream.
+    columns:
+      - name: id
+        description: "Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: description
+        description: "Territory/country name. May contain 'Data Error' — filtered in silver layer."
+        tests:
+          - not_null
+      - name: is_territory
+        description: "TRUE if this row represents a valid geographic territory."
+        tests:
+          - not_null
+      - name: postal_code_rule
+        description: "Boolean flag controlling postal code validation rules."
+        tests:
+          - not_null
+      - name: status_id
+        description: "Active/inactive status."
+        tests:
+          - not_null
+      - name: created_date
+        description: "Record creation timestamp."
+        tests:
+          - not_null
+      - name: created_by
+        description: "User ID who created the record."
+        tests:
+          - not_null
+      - name: country_code
+        description: "ISO 3-character country code."
+      - name: projection_code
+        description: "2-character projection code."
+      - name: map_code
+        description: "2-character map code."
+      - name: comment
+        description: "Free text comment about the territory."
+      - name: postal_code_mask
+        description: "Regex/mask pattern for postal code validation."
+      - name: updated_date
+        description: "Last update timestamp. NULL if never updated."
+      - name: updated_by
+        description: "User ID who last updated the record. NULL if never updated."
+
+  - name: raw_territory_region_lu
+    description: |
+      **Bronze Layer** — 1:1 copy of TerritoryRegion_lu lookup table.
+      Sub-regions are nested within territories. Used in silver to resolve
+      territory_region_id to a human-readable region description.
+    columns:
+      - name: id
+        description: "Primary key."
+        tests:
+          - unique
+          - not_null
+      - name: description
+        description: "Region name (e.g. England, California, Bavaria)."
+        tests:
+          - not_null
+      - name: code
+        description: "3-character region code."
+        tests:
+          - not_null
+      - name: territory_id
+        description: "Foreign key to raw_territory_lu. Every region belongs to a territory."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('raw_territory_lu')
+              field: id
+      - name: status_id
+        description: "Active/inactive status."
+        tests:
+          - not_null
+      - name: created_date
+        description: "Record creation timestamp."
+        tests:
+          - not_null
+      - name: created_by
+        description: "User ID who created the record."
+        tests:
+          - not_null
+      - name: updated_date
+        description: "Last update timestamp."
+      - name: updated_by
+        description: "User ID who last updated the record."
