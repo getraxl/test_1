@@ -1,0 +1,23 @@
+name: 'cocothon_dbt_conversion'
+version: '1.0.0'
+
+profile: 'default'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+models:
+  cocothon_dbt_conversion:
+    bronze:
+      +materialized: table
+      +schema: bronze
+      +query_tag: bronze_layer
+    silver:
+      +materialized: table
+      +schema: silver
+      +query_tag: silver_layer
+    mart:
+      +materialized: incremental
+      +schema: mart
+      +query_tag: mart_layer
