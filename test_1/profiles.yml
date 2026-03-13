@@ -1,0 +1,12 @@
+default:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: kxb81125
+      user: AKKI
+      role: ACCOUNTADMIN
+      warehouse: COMPUTE_WH
+      database: MIGRATE_ADMIN
+      schema: UTILITIES
+      threads: 4
